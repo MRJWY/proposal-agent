@@ -162,7 +162,62 @@ APP_URL                  → 배포된 Streamlit 대시보드 URL
 |--------|-----------------|
 | 일일 브리핑 | 매일 07:05, 20:05 |
 
-`workflow_dispatch`로 수동 실행 및 모드 선택 가능
+`workflow_dispatch`로 수동 실행 및 모드(`brief` / `new` / `due`) 선택 가능
+
+아래 YAML을 `.github/workflows/proposal_agent.yml` 로 저장하세요.
+
+```yaml
+name: Proposal Agent Daily
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "발송 모드 (brief / new / due)"
+        required: false
+        default: "brief"
+  schedule:
+    - cron: "5 22 * * *"   # 07:05 KST
+    - cron: "5 11 * * *"   # 20:05 KST
+
+concurrency:
+  group: proposal-agent-daily
+  cancel-in-progress: false
+
+jobs:
+  run-proposal-agent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - name: Restore credentials.json
+        run: echo "${{ secrets.GOOGLE_CREDENTIALS_JSON_B64 }}" | base64 --decode > credentials.json
+      - name: Run Proposal Agent
+        env:
+          GOOGLE_SHEET_ID:              ${{ secrets.GOOGLE_SHEET_ID }}
+          GOOGLE_CREDENTIALS_JSON:      ./credentials.json
+          OPENAI_API_KEY:               ${{ secrets.OPENAI_API_KEY }}
+          SLACK_WEBHOOK_URL:            ${{ secrets.SLACK_WEBHOOK_URL }}
+          APP_URL:                      ${{ vars.APP_URL }}
+          OPENAI_MODEL:                 gpt-4o-mini
+          IRIS_OPPORTUNITY_MASTER_SHEET: OPPORTUNITY_MASTER
+          MSS_OPPORTUNITY_MASTER_SHEET:  MSS_OPPORTUNITY_MASTER
+          NIPA_OPPORTUNITY_MASTER_SHEET: NIPA_OPPORTUNITY_MASTER
+          PROPOSAL_SLACK_MODE:          ${{ github.event.inputs.mode || 'brief' }}
+          PROPOSAL_LLM_MAX_ITEMS:       "20"
+          SLACK_DUE_SOON_DAYS:          "7"
+        run: python proposal_agent/run_daily.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: proposal-analysis-${{ github.run_id }}
+          path: analysis/proposal_summaries.json
+          if-no-files-found: ignore
+```
 
 ---
 
