@@ -1,0 +1,67 @@
+name: Proposal Agent Daily
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "발송 모드 (brief / new / due)"
+        required: false
+        default: "brief"
+  schedule:
+    # 07:05 Asia/Seoul = 22:05 UTC (전날)
+    - cron: "5 22 * * *"
+    # 20:05 Asia/Seoul = 11:05 UTC
+    - cron: "5 11 * * *"
+
+concurrency:
+  group: proposal-agent-daily
+  cancel-in-progress: false
+
+jobs:
+  run-proposal-agent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Restore credentials.json
+        run: |
+          echo "${{ secrets.GOOGLE_CREDENTIALS_JSON_B64 }}" | base64 --decode > credentials.json
+
+      - name: Run Proposal Agent daily
+        env:
+          PYTHONUNBUFFERED: "1"
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+          GOOGLE_CREDENTIALS_JSON: ./credentials.json
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: "gpt-4o-mini"
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          APP_URL: ${{ vars.APP_URL }}
+          IRIS_OPPORTUNITY_MASTER_SHEET: "OPPORTUNITY_MASTER"
+          MSS_OPPORTUNITY_MASTER_SHEET:  "MSS_OPPORTUNITY_MASTER"
+          NIPA_OPPORTUNITY_MASTER_SHEET: "NIPA_OPPORTUNITY_MASTER"
+          PROPOSAL_SLACK_MODE: ${{ github.event.inputs.mode || 'brief' }}
+          PROPOSAL_LLM_MAX_ITEMS: "20"
+          SLACK_DUE_SOON_DAYS: "7"
+        run: |
+          python proposal_agent/run_daily.py
+
+      - name: Upload analysis artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: proposal-analysis-${{ github.run_id }}
+          path: analysis/proposal_summaries.json
+          if-no-files-found: ignore

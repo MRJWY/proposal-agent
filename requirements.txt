@@ -1,0 +1,11 @@
+requests
+beautifulsoup4
+lxml
+python-dotenv
+gspread
+google-auth
+pdfplumber
+openai
+streamlit
+plotly
+flask
